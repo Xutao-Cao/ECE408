@@ -27,8 +27,16 @@ __global__ void total(float *input, float *output, int len) {
     unsigned int start = 2 * blockIdx.x * blockDim.x;
     unsigned int id1 = start + t;
     unsigned int id2 = start + blockDim.x + t;
-    partSum[t] = (id1 < len) ? input[id1] : 0;
-    partSum[blockDim.x + t] = (id2 < len) ? input[id2] : 0;
+    if (id1 < len){
+      partSum[t] = input[id1];
+    } else {
+      partSum[t] = 0;
+    }
+    if (id2 < len){
+      partSum[blockDim.x + t] = input[id2];
+    } else {
+      partSum[blockDim.x + t] = 0;
+    }
 
     for (unsigned int stride = blockDim.x; stride >= 1; stride >>= 1)
     {
