@@ -1,5 +1,5 @@
 #include <wb.h>
-
+#define BLOCK_SIZE 512
 #define wbCheck(stmt)                                                     \
   do {                                                                    \
     cudaError_t err = stmt;                                               \
@@ -14,6 +14,14 @@ __global__ void spmvJDSKernel(float *out, int *matColStart, int *matCols,
                               int *matRowPerm, int *matRows,
                               float *matData, float *vec, int dim) {
   //@@ insert spmv kernel for jds format
+  int row = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row < dim){
+    float dot = 0;
+    for(int col = 0; col < matRows[row]; col ++){
+      dot += matData[matColStart[col] + row] * vec[matCols[matColStart[col] + row]];
+    }
+    out[matRowPerm[row]] = dot;
+  }
 }
 
 static void spmvJDS(float *out, int *matColStart, int *matCols,
@@ -21,6 +29,9 @@ static void spmvJDS(float *out, int *matColStart, int *matCols,
                     float *vec, int dim) {
 
   //@@ invoke spmv kernel for jds format
+  dim3 DimGrid(ceil(1.0 * dim / BLOCK_SIZE), 1, 1);
+  dim3 DimBlock(BLOCK_SIZE, 1, 1);
+  spmvJDSKernel<<<DimGrid, DimBlock>>>(out, matColStart, matCols,matRowPerm, matRows, matData, vec, dim);
 }
 
 int main(int argc, char **argv) {
