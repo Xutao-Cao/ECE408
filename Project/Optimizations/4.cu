@@ -1,3 +1,4 @@
+// 67.44ms
 #include <cmath>
 #include <iostream>
 #include "gpu-new-forward.h"

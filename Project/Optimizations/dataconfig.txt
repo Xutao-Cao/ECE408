@@ -1,0 +1,15 @@
+Channels: 1
+Batch: 10000
+Map_out: 4
+Height: 86
+Width: 86
+K: 7
+Layer Time: 683.009 ms
+Op Time: 11.6088 ms
+Conv-GPU==
+Channels: 4
+Batch: 10000
+Map_out: 16
+Height: 40
+Width: 40
+K: 7

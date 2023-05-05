@@ -1,9 +1,10 @@
+//89ms
 #include <cmath>
 #include <iostream>
 #include "gpu-new-forward.h"
 #define TILE_WIDTH 16
 __constant__ float constant_mask[10000];
-__global__ void conv_forward_kernel(float * __restrict__ output, const float * __restrict__ input, const float * __restrict__ mask, const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
+__global__ void conv_forward_kernel(float *output, const float *input, const float *mask, const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
 {
     /*
     Modify this function to implement the forward pass described in Chapter 16.
@@ -25,7 +26,7 @@ __global__ void conv_forward_kernel(float * __restrict__ output, const float * _
     const int Height_out = Height - K + 1;
     const int Width_out = Width - K + 1;
     extern __shared__ float shared_mem[];
-    int shared_width = TILE_WIDTH + K - 1;
+    // int shared_width = TILE_WIDTH + K - 1;
     // (void)Height_out; // silence declared but never referenced warning. remove this line when you start working
     // (void)Width_out; // silence declared but never referenced warning. remove this line when you start working
 
@@ -37,7 +38,7 @@ __global__ void conv_forward_kernel(float * __restrict__ output, const float * _
     #define out_4d(i3, i2, i1, i0) output[(i3) * (Map_out * Height_out * Width_out) + (i2) * (Height_out * Width_out) + (i1) * (Width_out) + i0]
     #define in_4d(i3, i2, i1, i0) input[(i3) * (Channel * Height * Width) + (i2) * (Height * Width) + (i1) * (Width) + i0]
     #define mask_4d(i3, i2, i1, i0) constant_mask[(i3) * (Channel * K * K) + (i2) * (K * K) + (i1) * (K) + i0]
-    #define shared_2d(i1, i0) shared_mem[(i1) * (shared_width) + i0]
+    #define shared_2d(i2, i1, i0) shared_mem[(i2) * (22) * (Channel) + (i1) * (22) + i0]
     // Insert your GPU convolution kernel code here
     int tx = threadIdx.x;
     int ty = threadIdx.y;
@@ -50,23 +51,25 @@ __global__ void conv_forward_kernel(float * __restrict__ output, const float * _
     int b = blockIdx.z;
 
     float acc = 0.0f;
+    #pragma unroll
     for (int c = 0; c < Channel; c++){
-        for(int i = ty; i < shared_width; i += TILE_WIDTH ){
-            for(int j = tx; j < shared_width; j += TILE_WIDTH){
-                if(tiled_h + i < Height && tiled_w + j < Width){
-                    shared_2d(i, j) = in_4d(b, c, tiled_h + i, tiled_w + j);
-                }
+        shared_2d(c, ty, tx) = in_4d(b, c, tiled_h + ty, tiled_w + tx);
+    }
+    __syncthreads();
+    if(tx >= TILE_WIDTH || ty >= TILE_WIDTH){
+        return;
+    }
+    #pragma unroll
+    for (int c = 0; c < Channel; c++){      
+        #pragma unroll
+        for(int p = 0; p < 7; p++){
+            #pragma unroll
+            for (int q = 0; q < 7; q ++){
+                // if (h + p < Height && w + q < Width)
+                    acc += shared_2d(c, ty + p, tx + q) * mask_4d(m, c, p, q);
             }
         }
-        __syncthreads();
-        acc += shared_2d(ty, tx) * mask_4d(m, c, 0, 0) + shared_2d(ty, tx + 1) * mask_4d(m, c, 0, 1) + shared_2d(ty, tx + 2) * mask_4d(m, c, 0, 2) +shared_2d(ty, tx + 3) * mask_4d(m, c, 0, 3) +shared_2d(ty, tx + 4) * mask_4d(m, c, 0, 4) + shared_2d(ty, tx + 5) * mask_4d(m, c, 0, 5) + shared_2d(ty, tx + 6) * mask_4d(m, c, 0, 6)
-            + shared_2d(ty + 1, tx) * mask_4d(m, c, 1, 0) + shared_2d(ty + 1, tx + 1) * mask_4d(m, c, 1, 1) + shared_2d(ty + 1, tx + 2) * mask_4d(m, c, 1, 2) + shared_2d(ty + 1, tx + 3) * mask_4d(m, c, 1, 3) + shared_2d(ty + 1, tx + 4) * mask_4d(m, c, 1, 4) + shared_2d(ty + 1, tx + 5) * mask_4d(m, c, 1, 5) + shared_2d(ty + 1, tx + 6) * mask_4d(m, c, 1, 6)
-            + shared_2d(ty + 2, tx) * mask_4d(m, c, 2, 0) + shared_2d(ty + 2, tx + 1) * mask_4d(m, c, 2, 1) + shared_2d(ty + 2, tx + 2) * mask_4d(m, c, 2, 2) + shared_2d(ty + 2, tx + 3) * mask_4d(m, c, 2, 3) + shared_2d(ty + 2, tx + 4) * mask_4d(m, c, 2, 4) + shared_2d(ty + 2, tx + 5) * mask_4d(m, c, 2, 5) + shared_2d(ty + 2, tx + 6) * mask_4d(m, c, 2, 6)
-            + shared_2d(ty + 3, tx) * mask_4d(m, c, 3, 0) + shared_2d(ty + 3, tx + 1) * mask_4d(m, c, 3, 1) + shared_2d(ty + 3, tx + 2) * mask_4d(m, c, 3, 2) + shared_2d(ty + 3, tx + 3) * mask_4d(m, c, 3, 3) + shared_2d(ty + 3, tx + 4) * mask_4d(m, c, 3, 4) + shared_2d(ty + 3, tx + 5) * mask_4d(m, c, 3, 5) + shared_2d(ty + 3, tx + 6) * mask_4d(m, c, 3, 6)
-            + shared_2d(ty + 4, tx) * mask_4d(m, c, 4, 0) + shared_2d(ty + 4, tx + 1) * mask_4d(m, c, 4, 1) + shared_2d(ty + 4, tx + 2) * mask_4d(m, c, 4, 2) + shared_2d(ty + 4, tx + 3) * mask_4d(m, c, 4, 3) + shared_2d(ty + 4, tx + 4) * mask_4d(m, c, 4, 4) + shared_2d(ty + 4, tx + 5) * mask_4d(m, c, 4, 5) + shared_2d(ty + 4, tx + 6) * mask_4d(m, c, 4, 6)
-            + shared_2d(ty + 5, tx) * mask_4d(m, c, 5, 0) + shared_2d(ty + 5, tx + 1) * mask_4d(m, c, 5, 1) + shared_2d(ty + 5, tx + 2) * mask_4d(m, c, 5, 2) + shared_2d(ty + 5, tx + 3) * mask_4d(m, c, 5, 3) + shared_2d(ty + 5, tx + 4) * mask_4d(m, c, 5, 4) + shared_2d(ty + 5, tx + 5) * mask_4d(m, c, 5, 5) + shared_2d(ty + 5, tx + 6) * mask_4d(m, c, 5, 6)
-            + shared_2d(ty + 6, tx) * mask_4d(m, c, 6, 0) + shared_2d(ty + 6, tx + 1) * mask_4d(m, c, 6, 1) + shared_2d(ty + 6, tx + 2) * mask_4d(m, c, 6, 2) + shared_2d(ty + 6, tx + 3) * mask_4d(m, c, 6, 3) + shared_2d(ty + 6, tx + 4) * mask_4d(m, c, 6, 4) + shared_2d(ty + 6, tx + 5) * mask_4d(m, c, 6, 5) + shared_2d(ty + 6, tx + 6) * mask_4d(m, c, 6, 6);
-        __syncthreads();
+
     }
 
     if (h >= Height_out || w >= Width_out){
@@ -120,10 +123,15 @@ __host__ void GPUInterface::conv_forward_gpu(float *device_output, const float *
     int H_grid = ceil(1.0*Height_out/TILE_WIDTH);
     int Y = H_grid * W_grid;
 
-    dim3 blockDim(TILE_WIDTH, TILE_WIDTH, 1);
+    dim3 blockDim(TILE_WIDTH + K - 1, TILE_WIDTH + K - 1, 1);
     dim3 gridDim(Map_out, Y, Batch);
-
-    conv_forward_kernel<<<gridDim, blockDim, (TILE_WIDTH + K - 1)*(TILE_WIDTH + K - 1)*sizeof(float)>>>(device_output, device_input, device_mask, Batch, Map_out, Channel, Height, Width, K);
+    // std::cout<<"Channels: "<<Channel<<std::endl;
+    // std::cout<<"Batch: "<<Batch<<std::endl;
+    // std::cout<<"Map_out: "<<Map_out<<std::endl;
+    // std::cout<<"Height: "<<Height<<std::endl;
+    // std::cout<<"Width: "<<Width<<std::endl;
+    // std::cout<<"K: "<<K<<std::endl;
+    conv_forward_kernel<<<gridDim, blockDim, (TILE_WIDTH + K - 1)*(TILE_WIDTH + K - 1)*Channel*sizeof(float)>>>(device_output, device_input, device_mask, Batch, Map_out, Channel, Height, Width, K);
     
 }
 
